@@ -1,0 +1,59 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $DIR/../common.inc
+this=`basename $0`
+
+export nodepath=$1
+[ -z $nodepath ] && error_exit "$this: missing nodepath"
+[ -e $nodepath/.conf/nickname ] || error_exit "$this: $nodepath is not a node"
+
+error_msg="$this: missing key, abort"
+
+info_path=$2
+component_name=$3
+expected_version=$4
+path_to_verify=$5
+
+execute=`get_node_key_path $nodepath tat_execute` || error_exit "$error_msg"
+
+[ -e "$info_path" ] || mkdir -p "$info_path"
+
+#########################################
+#Check versions and validate hashes
+#########################################
+installed_version=`cat $info_path/${component_name}_version 2>/dev/null`
+
+[ -z "$installed_version" ] && installed_version="NONE"
+
+if [ "$installed_version" != "$expected_version" ]; then
+    log "$this: $component_name: current version = $expected_version ; installed = $installed_version" 2
+    exit 10
+else
+    log "$this: $component_name: up-to-date ($installed_version)" 4
+fi
+
+#######################################
+#Validate hashes
+#######################################
+
+installed_hash=`cat $info_path/${component_name}_hash 2>/dev/null`
+
+if [ -z "$installed_hash" ]; then
+    log "this: $component_name: no hash available." 2
+    exit 5
+else
+    if $execute "[ -e $path_to_verify ]" ; then
+        files=$($execute "find $path_to_verify -type f -print0 | sort -z | xargs -0 sha1sum")
+        actual_hash=$(echo "$files" | sha1sum | cut -f1 -d ' ')
+        if [ "$actual_hash" != "$installed_hash" ]; then
+            log "$this: $component_name: WARNING! hash does not match! ($installed_hash vs. $actual_hash)" 1
+            log "$this: $component_name: $(echo "$files" | diff $info_path/${component_name}_files -)" 1
+            exit 20
+        else
+            log "$this: $component_name: hash is unchanged" 4
+        fi
+    else
+        log "$this: path does not exist: $path_to_verify" 1
+        exit 20
+    fi
+fi

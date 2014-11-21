@@ -1,0 +1,31 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $DIR/../common.inc
+this=`basename $0`
+
+export nodepath=$1
+
+error_msg="status: missing key, abort"
+execute=`get_node_key_path $nodepath tat_execute` || error_exit "$error_msg"
+nickname=`get_node_key_value $nodepath nickname` || error_exit "$error_msg"
+remote_pid_file_path=`get_node_key_value $nodepath pidFilePath` || error_exit "$error_msg"
+
+if $execute "uname -a >/dev/null"; then
+
+    pid=`$execute "find 2>/dev/null $remote_pid_file_path | wc -l"`
+
+    if [ "$pid" == "1" ] ; then
+        nodestatus="running"
+        exit_code=0
+    else
+        nodestatus="stopped"
+        exit_code=10
+    fi
+
+else
+    nodestatus="offline"
+    exit_code=20
+fi
+log "$this: $nodestatus" 0
+
+exit $exit_code

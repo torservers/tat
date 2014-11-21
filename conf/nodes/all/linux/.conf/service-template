@@ -1,0 +1,164 @@
+#!/bin/bash
+# Description:       Start The Onion Router, a TCP overlay
+# #                    network client that provides anonymous
+# #                    transport.
+#
+#
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+NAME=tor-{{nickname}}
+DESC="tor daemon $NAME"
+WAITFORDAEMON=60
+
+
+# Settings
+
+USER={{torUser}}                              # username under which the daemon will be started
+NODECONFIG={{torrcFilePath}}                  # path to tor node config file
+DAEMON={{distPath}}/tor/bin/tor       # path to tor daemon binary
+
+TORPIDDIR={{pidPath}}                         # pid file directory
+TORPID={{pidFilePath}}                        # pid file path
+
+#FIXME: otherwise it will not start, $DEFAULTSFILE is empty
+RUN_DAEMON="yes"
+
+# path to node specific config file
+ARGS=" -f $NODECONFIG"
+
+# Let's try to figure our some sane defaults:
+if [ -r /proc/sys/fs/file-max ]; then
+        system_max=`cat /proc/sys/fs/file-max`
+        if [ "$system_max" -gt "80000" ] ; then
+                MAX_FILEDESCRIPTORS=32768
+        elif [ "$system_max" -gt "40000" ] ; then
+                MAX_FILEDESCRIPTORS=16384
+        elif [ "$system_max" -gt "10000" ] ; then
+                MAX_FILEDESCRIPTORS=8192
+        else
+                MAX_FILEDESCRIPTORS=1024
+                cat << EOF
+
+Warning: Your system has very few filedescriptors available in total.
+
+Maybe you should try raising that by adding 'fs.file-max=100000' to your
+/etc/sysctl.conf file.  Feel free to pick any number that you deem appropriate.
+Then run 'sysctl -p'.  See /proc/sys/fs/file-max for the current value, and
+file-nr in the same directory for how many of those are used at the moment.
+
+EOF
+        fi
+else
+        MAX_FILEDESCRIPTORS=8192
+fi
+
+NICE=""
+
+test -x $DAEMON || exit 0
+
+
+wait_for_deaddaemon () {
+        pid=$1
+        sleep 1
+        if test -n "$pid"
+        then
+                if kill -0 $pid 2>/dev/null
+                then
+                        echo -n "."
+                        cnt=0
+                        while kill -0 $pid 2>/dev/null
+                        do
+                                cnt=`expr $cnt + 1`
+                                if [ $cnt -gt $WAITFORDAEMON ]
+                                then
+                                        echo " FAILED."
+                                        return 1
+                                fi
+                                sleep 1
+                                echo -n "."
+                        done
+                fi
+        fi
+        return 0
+}
+
+
+check_torpiddir () {
+        if test ! -d $TORPIDDIR; then
+                #echo "There is no $TORPIDDIR directory.  Creating one for you."
+                mkdir -m 02700 "$TORPIDDIR"
+                chown $USER:$USER "$TORPIDDIR"
+        fi
+
+        if test ! -x $TORPIDDIR; then
+                echo "Cannot access $TORPIDDIR directory, are you root?" >&2
+                exit 1
+        fi
+}
+
+
+case "$1" in
+  start)
+        if [ "$RUN_DAEMON" != "yes" ]; then
+                echo "Not starting $DESC (Disabled in $DEFAULTSFILE)."
+                exit 0
+        fi
+
+        if [ -n "$MAX_FILEDESCRIPTORS" ]; then
+                echo -n "Raising maximum number of filedescriptors (ulimit -n) to $MAX_FILEDESCRIPTORS"
+                if ulimit -n "$MAX_FILEDESCRIPTORS" ; then
+                        echo "."
+                else
+                        echo ": FAILED."
+                fi
+        fi
+
+        check_torpiddir
+
+        echo "Starting $DESC: $NAME..."
+        #check_config
+
+        start-stop-daemon --start --background -c $USER --quiet --oknodo \
+                --pidfile $TORPID \
+                $NICE \
+                --startas /bin/bash -- -c "exec $DAEMON $ARGS > {{installPath}}/log/$NAME-start.log 2>&1"
+        echo "done."
+        ;;
+  stop)
+        echo -n "Stopping $DESC: "
+        pid=`cat $TORPID 2>/dev/null` || true
+
+        if test ! -f $TORPID -o -z "$pid"; then
+                echo "not running (there is no $TORPID)."
+                exit 0
+        fi
+
+        kill -2 $pid
+
+        ;;
+  reload|force-reload)
+        echo -n "Reloading $DESC configuration: "
+        pid=`cat $TORPID 2>/dev/null` || true
+
+        if test ! -f $TORPID -o -z "$pid"; then
+                echo "not running (there is no $TORPID)."
+                exit 0
+        fi
+
+        #check_config
+
+        kill -1 $pid
+        ;;
+  restart)
+        #check_config
+
+        $0 stop
+        sleep 32
+        $0 start
+        ;;
+  *)
+        echo "Usage: $0 {start|stop|restart|reload|force-reload}" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

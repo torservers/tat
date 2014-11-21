@@ -1,0 +1,35 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $DIR/../common.inc
+this=`basename $0`
+
+export nodepath=$1
+[ -z $nodepath ] && error_exit "$this: missing nodepath"
+[ -e $nodepath/.conf/nickname ] || error_exit "$this: $nodepath is not a node"
+
+operation=$2
+
+case $operation in
+    start | stop | restart | reload )
+        error_msg="$this: missing key, abort"
+        execute=`get_node_key_path $nodepath tat_execute` || error_exit "$error_msg"
+        nickname=`get_node_key_value $nodepath nickname` || error_exit "$error_msg"
+        remote_base_path=`get_node_key_value $nodepath installPath`
+
+        remote_etc_path=$remote_base_path/etc
+
+        $execute "$remote_etc_path/service-tor-$nickname.sh $operation >/dev/null" || error_exit "$this: could not send $operation to $nodepath"
+        log "$this: $operation: sent command to node $nodepath successfully" 2
+        case $operation in
+            stop)
+                log "$this: shutdown may take up to a minute." 2
+                ;;
+            start | restart)
+                $BASEDIR/lib/node/status_node $nodepath || log "$this: did not start, see $remote_base_path/log/tor-$nickname-start.log for more details" 0
+                ;;
+        esac
+        ;;
+    * )
+        error_exit "$this: usage : $this NODEPATH {start|stop|restart|reload}"
+        ;;
+esac

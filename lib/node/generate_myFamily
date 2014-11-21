@@ -1,0 +1,24 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $DIR/../common.inc
+this=`basename $0`
+
+if [ -z "$1" ]; then
+    searchbase="conf/nodes/all"
+else
+    searchbase=$1
+fi
+
+log "$this: searchbase: $searchbase" 2
+
+myFamily=""
+
+# a node must have a nickname for now
+for file in `find $searchbase -name "nickname"`; do
+    node_dir_name=$(dirname $(dirname $file))
+    fingerprint=`$BASEDIR/lib/node/fingerprint_node $node_dir_name`
+    [ -z "$fingerprint" ] || myFamily+="$fingerprint,"
+done
+
+echo $myFamily >$searchbase/.conf/myFamily
+log "$this: myFamily is $myFamily" 2

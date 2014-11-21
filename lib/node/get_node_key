@@ -1,0 +1,11 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $DIR/../common.inc
+this=`basename $0`
+
+export nodepath=$1
+key=$2
+
+error_msg="status: missing key, abort"
+log "$this: getting key $key for $nodepath"
+get_node_key_value $nodepath $key || error_exit "$error_msg"

@@ -1,0 +1,13 @@
+#!/bin/bash
+source $BASEDIR/lib/common.inc
+this=`basename $0`
+
+requirements="build-essential automake autogen libtool zlib1g-dev rsync"
+log "$this: checking for build and runtime requirements." 2
+
+if $execute "dpkg -s $requirements >/dev/null 2>&1"; then
+    log "$this: $requirements already installed" 4
+else
+    log "$this: $requirements not installed, installing" 3
+    $execute "apt-get install -y $requirements" &>/dev/null
+fi

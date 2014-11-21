@@ -1,0 +1,11 @@
+resources/*
+**/keys/*
+**/ssh/*
+**/data/*
+**id_rsa*
+tat.log
+.deploy/
+ssh/
+.log/
+myFamily
+conf/dists/*

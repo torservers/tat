@@ -1,0 +1,207 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $DIR/../common.inc
+this=`basename $0`
+
+export nodepath=$1
+[ -z $nodepath ] && error_exit "$this: missing nodepath"
+[ -e $nodepath/.conf/nickname ] || error_exit "$this: $nodepath is not a node"
+
+error_msg="$this: missing key, abort"
+export execute=`get_node_key_path $nodepath tat_execute` || error_exit "$error_msg"
+export copy=`get_node_key_path $nodepath tat_copy` || error_exit "$error_msg"
+setup_build_env=`get_node_key_path $nodepath tat_setup-build-env` || error_exit "$error_msg"
+compile_libevent=`get_node_key_path $nodepath tat_compile_libevent` || error_exit "$error_msg"
+compile_openssl=`get_node_key_path $nodepath tat_compile_openssl` || error_exit "$error_msg"
+compile_tor=`get_node_key_path $nodepath tat_compile_tor` || error_exit "$error_msg"
+
+log "$this: starting deploy to $nodepath" 0
+
+########################
+#Local setup
+########################
+
+export remote_base_path=`get_node_key_value $nodepath installPath` || error_exit "$error_msg"
+export remote_src_path=`get_node_key_value $nodepath srcPath` || error_exit "$error_msg"
+export remote_dist_path=`get_node_key_value $nodepath distPath` || error_exit "$error_msg"
+export remote_etc_path=`get_node_key_value $nodepath etcPath` || error_exit "$error_msg"
+export remote_data_path=`get_node_key_value $nodepath dataPath` || error_exit "$error_msg"
+export remote_log_path=`get_node_key_value $nodepath logPath` || error_exit "$error_msg"
+export remote_pid_path=`get_node_key_value $nodepath pidPath` || error_exit "$error_msg"
+nickname=`get_node_key_value $nodepath nickname` || error_exit "$error_msg"
+
+export info_path="$BASEDIR/$nodepath/.deploy/installed/"
+[ -e "$info_path" ] || mkdir -p "$info_path"
+echo >$info_path/remote_src_path $remote_src_path
+echo >$info_path/remote_dist_path $remote_dist_path
+
+
+
+########################
+#Setup build environment
+########################
+
+$setup_build_env
+
+############
+#Remote setup
+############
+groupname=`get_node_key_value $nodepath torGroup` || error_exit "$error_msg"
+exec_user=`get_node_key_value $nodepath torUser` || error_exit "$error_msg"
+
+log "$this: setting up group '$groupname', user '$exec_user' and paths at '$remote_base_path'" 3
+
+#Create tornode group
+if $execute "getent group | grep \"$groupname:\" &>/dev/null"; then
+    log "$this: group $groupname already exists" 4
+else
+    log "$this: adding group $groupname" 3
+    $execute "addgroup $groupname" || error_exit "$this: could not create group $groupname"
+fi
+
+#Create user
+if [ `$execute "id -u $exec_user 2>/dev/null"` ]; then
+    log "$this: user $exec_user already exists" 4
+else
+    log "$this: adding user $exec_user" 3
+    $execute "adduser --system --no-create-home --disabled-login --ingroup tornode --quiet $exec_user"  || error_exit "$this: could not create user $exec_user"
+fi
+
+#create paths
+for path in $remote_base_path $remote_src_path $remote_dist_path $deploy_path $remote_etc_path $remote_pid_path $remote_data_path $remote_log_path; do
+    if $execute "[ ! -e "$path" ]" ; then
+        log "$this: creating $path" 4
+        $execute "mkdir -p $path 2>/dev/null" || error_exit "$this: could not create $path on node"
+        case $path in
+            #data and log dir must belong to tornode group and be writable it
+            $remote_log_path | $remote_data_path | $remote_pid_path)
+                $execute "chown root:tornode $path" || error_exit "$this: could not change group of $path"
+                $execute "chmod g+w $path" || error_exit "$this: could not add write permission for group of $path"
+                ;;
+        esac
+    fi
+done
+
+
+
+#########################################
+#Check versions and validate hashes
+#########################################
+[ -e "$CONFDIR/dists/" ] || mkdir -p "$CONFDIR/dists/"
+
+#get the node-dist-uuid and dist-uuid
+#[ -e $info_path/node_dist_uuid ] && node_dist_uuid=`cat $info_path/node_dist_uuid`
+remote_dist_uuid_path="$remote_dist_path/dist_uuid"
+dist_uuid=`$execute "cat $remote_dist_uuid_path 2>/dev/null"`
+
+
+#No dist_uuid, we have a new build
+if [ -z "$dist_uuid" ]; then
+    log "$this: no dist_uuid found, this seems to be a new installation." 3
+    dist_uuid=`uuid`
+    mkdir -p "$CONFDIR/dists/$dist_uuid"
+    $execute "echo $dist_uuid >$remote_dist_uuid_path" || error_exit "Could not write to $remote_dist_uuid_path on remote"
+fi
+
+echo >$info_path/node_dist_uuid $dist_uuid
+#[ -e $info_path/node_dist_uuid ] && node_dist_uuid=`cat $info_path/node_dist_uuid`
+dist_info_path="$CONFDIR/dists/$dist_uuid"
+if [ ! -e "$dist_info_path" ]; then
+    log "$this: WARNING: no info about dist_uuid $dist_uuid! Something evil may be happening." 0
+    error_exit "Aborting. (remove $remote_dist_uuid_path on remote to force reinstall)"
+fi
+
+
+build_libevent="yes"
+build_openssl="yes"
+build_tor="yes"
+
+log "$this: verify (libevent, openssl, tor)" 2
+$BASEDIR/lib/node/verify_path $nodepath $dist_info_path libevent $VERSION_LIBEVENT $remote_dist_path/libevent && build_libevent="no"
+$BASEDIR/lib/node/verify_path $nodepath $dist_info_path openssl $VERSION_OPENSSL $remote_dist_path/openssl && build_openssl="no"
+$BASEDIR/lib/node/verify_path $nodepath $dist_info_path tor $VERSION_TOR $remote_dist_path/tor && build_tor="no"
+
+##################################################################
+# always build tor when either libevent or openssl is to be built
+##################################################################
+if [ "$build_libevent" != "no" -o "$build_openssl" != "no" ]; then
+    build_tor="yes"
+fi
+
+##################################
+# call all specific build scripts
+##################################
+
+function hash_files_and_store_info() {
+    name=$1
+    version=$2
+
+    $execute "find $remote_dist_path/$name -type f -print0 | sort -z | xargs -0 sha1sum >$remote_dist_path/${name}_files"
+    hash=$($execute "sha1sum $remote_dist_path/${name}_files | cut -f1 -d ' '")
+    echo >$dist_info_path/${name}_version $version
+    echo >$dist_info_path/${name}_hash $hash
+    $execute "cat $remote_dist_path/${name}_files" >$dist_info_path/${name}_files
+    dist_log_line="$(date --iso-8601=s) installed $name $version with hash $hash"
+    echo >>$dist_info_path/dist.log $dist_log_line
+    $execute "echo >>$remote_dist_path/dist.log $dist_log_line"
+}
+
+
+if [ "$build_libevent" != "no" -o "$build_openssl" != "no" -o "$build_tor" != "no" ]; then
+    #check if we have space left on the device
+    kbytes_free=`$execute "df -k $remote_base_path"  | tail -1 | awk '{print $4}'`
+    log "$this: free space: ${kbytes_free}k" 4
+    kbytes_required=1048576 #1 gb
+    [ "$kbytes_free" -lt "$kbytes_required" ] && error_exit "$this: not enough space left on node (free: $kbytes_free k, required: $kbytes_required k)"
+
+    log "$this: build: libevenent=$build_libevent openssl=$build_openssl tor=$build_tor" 2
+
+    [ "yes" == $(ask_yes_or_no "Continue?") ] || error_exit "$this: aborted."
+
+    log "$this: for more info, see $remote_dist_path/build.log on node" 2
+    export stdout=">>$remote_dist_path/build.log"
+
+    if [ "$build_libevent" != "no" ]; then
+        $compile_libevent || error_exit "$this: build libevent failed"
+        hash_files_and_store_info libevent $VERSION_LIBEVENT
+
+        log "$this: building libevent finished" 3
+    fi
+
+    if [ "$build_openssl" != "no" ]; then
+        $compile_openssl || error_exit "$this: build openssl failed"
+        hash_files_and_store_info openssl $VERSION_OPENSSL
+        log "$this: building openssl finished" 3
+    fi
+
+    if [ "$build_tor" != "no" ]; then
+        $compile_tor || error_exit "$this: build tor failed"
+        hash_files_and_store_info tor $VERSION_TOR
+        log "$this: building tor finished" 3
+    fi
+else
+    log "$this: nothing to build" 2
+fi
+
+##########
+#Deploy etc
+##########
+
+$BASEDIR/lib/node/reconfigure_node $nodepath || error_exit "$this: could not reconfigure $nodepath"
+
+if [ $build_libevent != "no" -o $build_openssl != "no" -o $build_tor != "no" ] ; then
+    log "$this: dist changed, restarting affected nodes" 2
+    for somenode in `$BASEDIR/lib/node/list_nodes`; do
+        if [ `cat $somenode/.deploy/installed/node_dist_uuid 2>/dev/null` == "$dist_uuid" ]; then
+            if $BASEDIR/lib/node/status_node $nodepath; then
+                log "$this: restarting $somenode" 3
+                $BASEDIR/lib/node/manage_node $somenode restart
+            else
+                log "$this: $somenode is not running" 3
+            fi
+        fi
+
+    done
+
+fi
+log "$this: finished deploy to $nodepath" 0

@@ -1,0 +1,33 @@
+# Specific for Host
+BandwidthRate       {{bandwithRate}}
+BandwidthBurst      {{bandwithBurst}}
+NumCPUs             {{numCPUs}}
+
+# only relay
+SocksPort           0
+
+# specific to family of nodes
+MyFamily            {{myFamily}}
+
+# Things specific to this instance of tor
+# regarding the name, etc
+Nickname            {{nickname}}
+PidFile             {{pidFilePath}}
+Log notice file     {{logFilePath}}
+DataDirectory       {{dataPath}}/{{nickname}}/
+
+# General Network Settings
+OutboundBindAddress {{nodeIP}}
+Address             {{nodeIP}}
+
+# Onion Routing
+ORPort              {{orPort}}
+ORListenAddress     {{nodeIP}}:{{orPort}}
+
+# Directory Service
+DirPort             {{dirPort}}
+DirListenAddress    {{nodeIP}}:{{dirPort}}
+
+
+# Exit Policies
+ExitPolicy reject *:*

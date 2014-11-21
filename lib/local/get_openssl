@@ -1,0 +1,58 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $DIR/../common.inc
+this=`basename $0`
+
+# fetches latest stable openssl-tarball, verfies
+# it against local gpg public key and extracts
+# it
+
+if [ ! -d "$OPENSSL_SRCDIR" ]; then
+    log "$this: create $OPENSSL_SRCDIR" 3
+    mkdir -p $OPENSSL_SRCDIR
+fi
+
+log "$this: downloading latest openssl-release" 2
+
+# ironically, openssl is not available for download via
+# TLS / SSL
+
+DISTURL="http://ftp.openssl.org/source/"
+OPENSSL_PAGE=`mktemp`
+$torsocks wget -q $DISTURL -O $OPENSSL_PAGE &> /dev/null || error_exit "$this: could not load $DISTURL"
+FILENAME=`cat $OPENSSL_PAGE | grep LATEST | cut -d'"' -f4`
+SIGFILE=`cat $OPENSSL_PAGE | grep LATEST | cut -d'"' -f 12`
+log "$this attempting download from $DISTURL/$FILENAME" 3
+
+torsocks wget -q $DISTURL/$FILENAME -O $OPENSSL_SRCDIR/$FILENAME &> /dev/null || error_exit "$this: could not load $DISTURL/$FILENAME"
+torsocks wget -q $DISTURL/$SIGFILE -O  $OPENSSL_SRCDIR/$SIGFILE  &> /dev/null || error_exit "$this: could not load $DISTURL/$SIGFILE"
+
+rm $OPENSSL_PAGE
+
+###################################################
+# verify the signature of most recent tag in repo #
+###################################################
+
+log "$this: verifying gpg signatures of tarball" 3
+gpg_output=`$GPG_BIN --verify $OPENSSL_SRCDIR/$SIGFILE $OPENSSL_SRCDIR/$FILENAME 2>&1`
+rc=$?
+sig=`echo "${gpg_output}" | grep "Good signature from"`
+if [[ $rc != 0 ]] ; then
+        log "$this: verifing failed! ($gpg_output)" 0
+        exit $rc
+else
+        log "$this: verification successful. ($sig)" 1
+fi
+
+
+#######################################
+# now extract verfied openssl tarball #
+#######################################
+log "$this: extracting tarball to $OPENSSL_SRCDIR" 2
+cd $OPENSSL_SRCDIR
+tar -xf $FILENAME
+rm -rf current
+CURDIR="${FILENAME%.*.*}"
+ln -s $CURDIR current
+
+log "$this: finished!" 0

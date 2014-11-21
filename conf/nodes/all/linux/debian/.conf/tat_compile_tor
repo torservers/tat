@@ -1,0 +1,28 @@
+#!/bin/bash
+source $BASEDIR/lib/common.inc
+this=`basename $0`
+
+[ -z "$remote_src_path" ] && error_exit "remote_src_path not set"
+[ -z "$remote_dist_path" ] && error_exit "remote_dist_path not set"
+[ -z "$info_path" ] && error_exit "remote_dist_path not set"
+[ -z "$execute" ] && error_exit "execute not set"
+[ -z "$copy" ] && error_exit "copy not set"
+
+############
+#Build tor
+############
+log "$this: tor ($VERSION_TOR)" 3
+log "$this: copying tor sources from $TOR_SRCDIR to $remote_src_path/tor" 4
+$copy $TOR_SRCDIR $remote_src_path/tor || error_exit "$this: could not copy tor sources"
+log "$this: building tor ($VERSION_TOR)" 3
+cmd="cd $remote_src_path/tor/; ./autogen.sh &>/dev/null"; log "$this: $cmd" 4 ; $execute "$cmd"  || error_exit "tor: autogen failed: $cmd"
+tor_configure_cmd="./configure --with-libevent-dir=$remote_dist_path/libevent/ --with-openssl-dir=$remote_dist_path/openssl/ --disable-asciidoc --enable-static-openssl --enable-static-libevent --enable-openbsd-malloc --prefix=$remote_dist_path/tor/"
+cmd="cd $remote_src_path/tor/; $tor_configure_cmd $stdout"; log "$this: $cmd" 4 ; $execute "$cmd"  || error_exit "tor: configure failed: $cmd"
+cmd="cd $remote_src_path/tor/; make -j $stdout"; log "$this: $cmd" 4 ; $execute "$cmd"  || error_exit "tor: make failed: $cmd"
+cmd="cd $remote_src_path/tor/; make -j test $stdout"; log "$this: $cmd" 4 ; $execute "$cmd"  || error_exit "tor: make test failed: $cmd"
+cmd="cd $remote_dist_path; [ -e tor ] && rm -rf tor || true"; log "$this: $cmd" 4 ; $execute "$cmd" || error_exit "$this: removal of old dist failed: $cmd"
+cmd="cd $remote_src_path/tor/; make -j install $stdout"; log "$this: $cmd" 4 ; $execute "$cmd"  || error_exit "tor: make install failed: $cmd"
+#we'll run tor as non-root-user, so we need the capability to bind to privileged ports
+tor_binary_path=$remote_dist_path/tor/bin/tor
+$execute "setcap 'cap_net_bind_service=+ep' $tor_binary_path" || error_exit "$this: could not add non-root low ports capability to $tor_binary_path"
+ 

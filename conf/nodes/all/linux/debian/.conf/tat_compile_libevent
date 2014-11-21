@@ -1,0 +1,24 @@
+#!/bin/bash
+source $BASEDIR/lib/common.inc
+this=`basename $0`
+
+[ -z "$remote_src_path" ] && error_exit "remote_src_path not set"
+[ -z "$remote_dist_path" ] && error_exit "remote_dist_path not set"
+[ -z "$info_path" ] && error_exit "remote_dist_path not set"
+[ -z "$execute" ] && error_exit "execute not set"
+[ -z "$copy" ] && error_exit "copy not set"
+
+###############
+#Build libevent
+###############
+
+log "$this: libevent ($VERSION_LIBEVENT)" 3
+log "$this: copying libevent sources from $LIBEVENT_SRCDIR to $remote_src_path/libevent" 4
+$copy $LIBEVENT_SRCDIR $remote_src_path/libevent || error_exit "$this could not copy libevent sources"
+log "$this: building libevent ($VERSION_LIBEVENT)" 3
+cmd="cd $remote_src_path/libevent/; ./autogen.sh &>/dev/null"; log "$this: $cmd" 4; $execute "$cmd" || error_exit "$this: autogen failed: $cmd"
+libevent_configure_cmd="CFLAGS=\"$CFLAGS -fPIC\" ./configure --disable-openssl --prefix=$remote_dist_path/libevent "
+cmd="cd $remote_src_path/libevent/; $libevent_configure_cmd $stdout"; log "$this: $cmd" 4 ; $execute "$cmd" || error_exit "$this: configure failed: $cmd"
+cmd="cd $remote_src_path/libevent/; make -j $stdout"; log "$this: $cmd" 4 ; $execute "$cmd" || error_exit "$this: make failed: $cmd"
+cmd="cd $remote_dist_path; [ -e ./libevent ] && rm -rf ./libevent || true"; log "$this: $cmd" 4 ; $execute "$cmd" || error_exit "$this: removal of old dist failed: $cmd"
+cmd="cd $remote_src_path/libevent/; make -j install $stdout"; log "$this: $cmd" 4; $execute "$cmd" || error_exit "$this: make install failed: $cmd"

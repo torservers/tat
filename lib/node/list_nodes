@@ -1,0 +1,27 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $DIR/../common.inc
+this=`basename $0`
+
+if [ -z "$1" ]; then
+    #searchbase=`readlink -f $CONFDIR/nodes/all`
+    searchbase="$CONFDIR/nodes/all"
+else
+    searchbase=$(readlink -f $1)
+fi
+
+log "$this: searchbase: $searchbase" 2
+
+# a node must have a nickname for now
+for file in `find $searchbase -name "nickname"`; do
+    node_dir_name=$(dirname $(dirname $file))
+    nickname=$(cat $file)
+
+    #return path relative to $BASEDIR
+    startpos=(${#BASEDIR}+1)
+    echo ${node_dir_name:$startpos}
+
+    if [ `basename $node_dir_name` != "$nickname" ]; then
+        log "list: WARNING: nickname of nodepath $node_dir_name does not match nickname ($nickname)"
+    fi
+done

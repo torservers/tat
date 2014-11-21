@@ -1,0 +1,33 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $DIR/../common.inc
+this=`basename $0`
+
+export nodepath=$1
+[ -z $nodepath ] && error_exit "$this: missing nodepath"
+[ -e $nodepath/.conf/nickname ] || error_exit "$this: $nodepath is not a node"
+
+error_msg="$this: missing key, abort"
+execute=`get_node_key_path $nodepath tat_execute` || error_exit "$error_msg"
+remote_dist_path=`get_node_key_value $nodepath distPath` || error_exit "$error_msg"
+info_path="$BASEDIR/$nodepath/.deploy/installed/"
+
+
+[ -e $info_path/node_dist_uuid ] && node_dist_uuid=`cat $info_path/node_dist_uuid`
+[ -z "$node_dist_uuid" ] && error_exit "$this: No info available."
+dist_info_path="$CONFDIR/dists/$node_dist_uuid"
+
+if [ ! -e "$dist_info_path" ]; then
+    log "$this: WARNING: no info about dist_uuid $dist_uuid! Something evil may be happening." 0
+    error_exit "Aborting. (remove $remote_dist_uuid_path on remote to force reinstall)"
+fi
+
+
+#libevent
+$BASEDIR/lib/node/verify_path $nodepath $dist_info_path libevent $VERSION_LIBEVENT $remote_dist_path/libevent
+
+#openssl
+$BASEDIR/lib/node/verify_path $nodepath $dist_info_path openssl $VERSION_OPENSSL $remote_dist_path/openssl
+
+#tor
+$BASEDIR/lib/node/verify_path $nodepath $dist_info_path tor $VERSION_TOR $remote_dist_path/tor

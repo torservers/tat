@@ -1,0 +1,21 @@
+#!/bin/bash
+source $BASEDIR/lib/common.inc
+this=`basename $0`
+
+[ -z $nodepath ] && error_exit "$this: no nodepath."
+
+error_msg="$this: missing key, abort"
+hostname=`get_node_key_value $nodepath hostname` || error_exit "$error_msg"
+username=`get_node_key_value $nodepath username` || error_exit "$error_msg"
+sshPort=`get_node_key_value $nodepath sshPort` || error_exit "$error_msg"
+
+ssh_identity=`get_node_key_path $nodepath ssh/id_rsa` || error_exit "$error_msg"
+#create known_hosts if it does not exist
+ssh_knownhosts=`get_node_key_path $nodepath ssh/known_hosts` || touch `dirname $ssh_identity`/known_hosts
+ssh_knownhosts=`get_node_key_path $nodepath ssh/known_hosts` || error_exit "$error_msg"
+
+[ -z "$2" ] || error_exit "$this: too many arguments ($@), command not quoted?"
+[ -z "$@" ] && error_exit "$this: no command"
+#use the ssh_identity for the node, usually set at the host level.
+#IdentitiesOnly=yes prevents ssh from trying other identities, like ~/.ssh/id_rsa
+$torify ssh -p $sshPort -i $ssh_identity -o UserKnownHostsFile=$ssh_knownhosts -o IdentitiesOnly=yes $username@$hostname $@

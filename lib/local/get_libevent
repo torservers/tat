@@ -1,0 +1,55 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $DIR/../common.inc
+this=`basename $0`
+
+
+if [ ! -d "$LIBEVENT_SRCDIR" ]; then
+    log "$this: create $LIBEVENT_SRCDIR" 3
+    mkdir -p $LIBEVENT_SRCDIR
+fi
+
+#####################################
+# clone or pull libevent sourcecode #
+#####################################
+
+if [ ! -d "$LIBEVENT_SRCDIR/.git" ]; then
+    log "$this: repository does not exist, cloning it..." 2
+    mkdir -p $LIBEVENT_SRCDIR
+    cd $LIBEVENT_SRCDIR/../
+    $torsocks git clone $LIBEVENT_REPO $LIBEVENT_SRCDIR &> /dev/null
+else
+    log "$this: repository already exists - pulling updates..." 2
+    cd $LIBEVENT_SRCDIR
+    $torsocks git pull origin master &> /dev/null
+fi
+
+###################################################
+# verify the signature of most recent tag in repo #
+###################################################
+
+cd $LIBEVENT_SRCDIR
+
+LATEST_TAG=$($GIT_BIN describe --tags $($GIT_BIN rev-list --tags --max-count=1)) 
+
+log "$this: verifying signature of most recent tag $LATEST_TAG" 2
+
+$GIT_BIN config --local gpg.program $GPG_BIN &>/dev/null
+gpg_output=`$GIT_BIN tag -v $LATEST_TAG 2>&1`
+rc=$?
+sig=`echo "${gpg_output}" | grep "Good signature from"`
+if [[ $rc != 0 ]] ; then
+        log "$this: verifing signatures on Tag $LATEST_TAG in $LIBEVENT_SRCDIR failed! ($gpg_output)" 0
+        exit $rc
+else
+        log "$this: verification on tag $LATEST_TAG successful! ($sig)" 1
+fi
+
+###############################################
+# now checkout latest verified tag to workdir #
+###############################################
+log "$this: checking out latest tag into workdir..." 3
+$GIT_BIN checkout $LATEST_TAG &> /dev/null 2
+
+
+log "$this: finished!" 0

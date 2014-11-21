@@ -1,0 +1,38 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $DIR/../common.inc
+this=`basename $0`
+
+nodepath=$1
+[ -z $nodepath ] && error_exit "$this: missing nodepath"
+[ -e $nodepath/.conf/nickname ] || error_exit "this: $nodepath is not a node"
+
+nickname=`get_node_key_value $nodepath nickname` || error_exit "no nickname"
+
+#generate an empty myFamily file if none exists
+myFamily=`get_node_key_value $nodepath myFamily` || touch $BASEDIR/conf/nodes/all/.conf/myFamily
+
+
+#setup paths
+deploy_path=$nodepath/.deploy/etc
+
+if [ ! -d "$deploy_path" ]; then
+    mkdir -p $deploy_path
+fi
+torrc_path=$deploy_path/tor-$nickname.rc
+service_path=$deploy_path/service-tor-$nickname.sh
+
+
+log "$this: (re)generate torrc and service" 2
+
+###############
+#Generate torrc
+###############
+get_node_key_value $nodepath torrc-template >$torrc_path || error_exit "Could not generate torrc"
+log "$this: Generating torrc $torrc_path" 4
+
+###############
+#Generate service
+###############
+get_node_key_value $nodepath service-template >$service_path || error_exit "Could not generate service script"
+log "$this: Generating service-script $service_path" 4

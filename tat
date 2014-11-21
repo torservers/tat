@@ -1,0 +1,70 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# read config and util functions
+source $DIR/lib/common.inc
+
+log "$(whoami): $0 $*"
+
+if [ -z "$1" ]; then
+    echo "Usage:"
+    echo "$0 update-source"
+    echo "$0 {list|generate_myFamily|fingerprint|deploy|reconfigure|verify|start|stop|restart|reload} [PATH]"
+    exit
+fi
+
+#execute command
+
+case $1 in
+    update-source)
+        $BASEDIR/lib/local/get_libevent
+        $BASEDIR/lib/local/get_openssl
+        $BASEDIR/lib/local/get_tor
+        ;;
+    list)
+        shift
+        $BASEDIR/lib/node/list_nodes $@
+        ;;
+    generate_myFamily)
+        shift
+        $BASEDIR/lib/node/generate_myFamily $@
+        ;;
+    status)
+        shift
+        nodes=`$BASEDIR/lib/node/list_nodes $@`
+        for node in $nodes; do
+            $BASEDIR/lib/node/status_node $node
+        done
+        ;;
+    deploy|reconfigure|verify|fingerprint|start|stop|restart|reload|get_key)
+        cmd=$1
+        shift
+        nodes=`$BASEDIR/lib/node/list_nodes $@`
+        for node in $nodes; do
+            echo $node
+        done
+
+        nodes_count=`echo $nodes | wc -w`
+
+        if [ "yes" == $(ask_yes_or_no "$cmd $nodes_count nodes?") ]; then
+            for node in $nodes; do
+                case $cmd in
+                    deploy|reconfigure|verify|fingerprint)
+                        $BASEDIR/lib/node/${cmd}_node $node
+                        ;;
+                    start|stop|restart|reload)
+                        $BASEDIR/lib/node/manage_node $node $cmd
+                        ;;
+                    get_key)
+                        $BASEDIR/lib/node/get_node_key $node $2
+                esac
+            done
+        else
+            echo "Doing nothing"
+        fi
+        ;;
+esac
+
+if [ -f $1 ]; then
+    exec $@
+fi

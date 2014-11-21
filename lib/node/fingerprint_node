@@ -1,0 +1,18 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $DIR/../common.inc
+this=`basename $0`
+export nodepath=$1
+[ -z $nodepath ] && error_exit "$this: missing nodepath"
+[ -e $nodepath/.conf/nickname ] || error_exit "$this: $nodepath is not a node"
+
+error_msg="$this: missing key, abort"
+execute=`get_node_key_path $nodepath tat_execute` || error_exit "$error_msg"
+nickname=`get_node_key_value $nodepath nickname` || error_exit "$error_msg"
+remote_data_path=`get_node_key_value $nodepath dataPath` || error_exit "$error_msg"
+
+fingerprint_path=$remote_data_path/$nickname/fingerprint
+fingerprint=`$execute "cat $fingerprint_path | cut -d ' ' -f 2" ` || error_exit "$this: could not read $fingerprint_path"
+
+log "$this: $fingerprint" 2
+echo $fingerprint

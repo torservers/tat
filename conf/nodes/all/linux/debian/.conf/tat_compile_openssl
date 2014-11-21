@@ -1,0 +1,37 @@
+#!/bin/bash
+source $BASEDIR/lib/common.inc
+this=`basename $0`
+
+[ -z "$remote_src_path" ] && error_exit "remote_src_path not set"
+[ -z "$remote_dist_path" ] && error_exit "remote_dist_path not set"
+[ -z "$info_path" ] && error_exit "remote_dist_path not set"
+[ -z "$execute" ] && error_exit "execute not set"
+[ -z "$copy" ] && error_exit "copy not set"
+
+###############
+#Build openssl
+###############
+
+#note: running 'make -j' for openssl leads to nasty errors (segfaults, ../libcrypto.so: file not recognized: File truncated)
+
+
+log "$this: openssl ($VERSION_OPENSSL)" 3
+log "$this: copying libevent sources from $OPENSSL_SRCDIR to $remote_src_path/openssl" 4
+$copy $OPENSSL_SRCDIR/current/ $remote_src_path/openssl ||error_exit "$this: could not copy openssl sources"
+log "$this: building openssl ($VERSION_OPENSSL)" 3
+
+#the option only work on 64bit-systems
+if [ `$execute "uname -i"` == "x86_64" ]; then
+    ec_option="enable-ec_nistp_64_gcc_128"
+else
+    ec_option=""
+fi
+
+cmd="cd $remote_src_path/openssl/; make dclean $stdout"; log "$this: $cmd" 4 ; $execute "$cmd" || error_exit "openssl: dclean failed: $cmd"
+cmd="cd $remote_src_path/openssl/; ./config shared $ec_option -fPIC --prefix=$remote_dist_path/openssl/ $stdout";  log "$this: $cmd" 4; $execute  "$cmd" || error_exit "openssl: configure failed: $cmd"
+cmd="cd $remote_src_path/openssl/; make 2>&1 depend $stdout"; log "$this: $cmd" 4 ; $execute "$cmd" || error_exit "openssl: make depend failed: $cmd"
+cmd="cd $remote_src_path/openssl/; make 2>&1 $stdout"; log "$this: $cmd" 4 ; $execute "$cmd" || error_exit "openssl: make failed: $cmd"
+cmd="cd $remote_src_path/openssl/; make test &>/dev/null"; log "$this: $cmd" 4 ; $execute "$cmd" || error_exit "openssl: make test failed: $cmd"
+cmd="cd $remote_dist_path; [ -e openssl ] && rm -rf openssl || true"; log "$this: $cmd" 4 ; $execute "$cmd" || error_exit "$this: removal of old dist failed: $cmd"
+#MANDIR=/dev/null does not work: Cannot create directory /dev/null: File exists
+cmd="cd $remote_src_path/openssl/; make install 2>&1 $stdout"; log "$this: $cmd" 4 ; $execute "$cmd" || error_exit "openssl: make install failed: $cmd"

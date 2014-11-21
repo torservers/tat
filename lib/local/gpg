@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+# gpg binary wrapper to be used in git commands, since
+# git does not accept gpg-parameters in it's config, but
+# we need a special gpg-home where trusted pubkeys
+# for verification are stored
+
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $DIR/../common.inc
+this=`basename $0`
+
+
+GPG=`which gpg`
+
+$GPG --trust-model always --homedir $GPG_DIR -q "$@"
