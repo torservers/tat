@@ -98,6 +98,7 @@ tat is a collection of bash scripts and uses following tools to operate:
  * wget
  * ssh
  * rsync
+ * uuid
 
 Make sure that these tools are installed and in the (system) $PATH to use tat.
 
