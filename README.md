@@ -150,7 +150,7 @@ We genereate the id_rsa and id_rsa.pub files to access the host into the created
 
     ssh-keygen -t rsa -b 4096 -C "tat@USERNAME" -o -f mytorserver.net/.conf/ssh/id_rsa
 
-The content of `id_rsa.pub` must be added to the `.ssh/authorized_keys` file of ro  ot on the host!
+The content of `id_rsa.pub` must be added to the `.ssh/authorized_keys` file of root on the host!
 
 If the host is not accessed as root, edit the `.ssh/authorized_keys` for the respective user and override the `username` key for the host
 
